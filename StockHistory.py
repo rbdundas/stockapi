@@ -155,6 +155,7 @@ def get_volume_and_averages(ticker, number_of_years):
     plt.style.use('default')
 
     figure, axis = plt.subplots(2)
+    figure.suptitle(ticker)
 
     axis[0].plot(X, Y1)
     axis[0].plot(X, Y2)
