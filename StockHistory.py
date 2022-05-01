@@ -23,14 +23,14 @@ def get_price_history(ticker):
     print(json.dumps(resp_json))
 
 
-def get_price_history(ticker, number_of_years):
+def get_price_history(ticker, period_type, period, frequency_type, frequency):
     url = tda_url.format(ticker=ticker)
     params = {
         'apikey': os.environ['API_KEY'],
-        'periodType': 'year',
-        'period': number_of_years,
-        'frequencyType': 'daily',
-        'frequency': 1
+        'periodType': period_type,
+        'period': period,
+        'frequencyType': frequency_type,
+        'frequency': frequency
     }
     response = requests.get(url, params=params)
     resp_json = json.loads(response.content)
@@ -136,37 +136,46 @@ def get_volume(ticker, number_of_months):
     plt.show()
 
 
-def get_volume_and_averages(ticker, number_of_years):
+def get_volume_and_averages(ticker, period_type, period, frequency_type, frequency):
     if ticker + 'json' not in os.listdir():
-        get_price_history(ticker, number_of_years)
+        get_price_history(ticker, period_type, period, frequency_type, frequency)
     price_dict = json.load(open(ticker + '.json'))
     df = pd.DataFrame(price_dict['candles'])
     df['Date'] = pd.to_datetime(df['datetime'])
-    df['ma50'] = df['close'].rolling(50).mean()
-    df['ma200'] = df['close'].rolling(200).mean()
+    df.set_index(df['Date'])
 
-    X = df['Date']
-    Y1 = df['close']
-    Y2 = df['ma50']
-    Y3 = df['ma200']
-    Y4 = df['volume']
+    # Create a new column in dataframe and populate with bar color
+    i = 0
+    while i < len(df):
+        if df.iloc[i]['close'] >= df.iloc[i]['open']:
+            df.at[i, 'color'] = "green"
+        elif df.iloc[i]['close'] < df.iloc[i]['open']:
+            df.at[i, 'color'] = "red"
+        else:
+            df.at[i, 'color'] = "blue"
+        i += 1
 
+    # Set up the chart
     plt.figure(figsize=[16, 8])
     plt.style.use('default')
-
     figure, axis = plt.subplots(2)
     figure.suptitle(ticker)
 
-    axis[0].plot(X, Y1)
-    axis[0].plot(X, Y2)
-    axis[0].plot(X, Y3)
-    axis[1].plot(X, Y4)
+    # Draw the price history
+    axis[0].plot(df['Date'], df['close'])
+    axis[0].axes.get_xaxis().set_visible(False)  # Remove X labels
 
+    # Draw the volume
+    axis[1].bar(df['Date'], df['volume'], color=df['color'])
+
+    # Tweak chart to display better
+    plt.xticks(rotation=45, ha='right')
+    plt.subplots_adjust(bottom=0.2)
     plt.show()
 
 
 def main():
-    get_volume_and_averages('GOOG', 5)
+    get_volume_and_averages('TSLA', 'month', 3, 'daily', 1)
 
 
 if __name__ == "__main__":
