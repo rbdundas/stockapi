@@ -33,6 +33,8 @@ def get_price_history(ticker, period_type, period, frequency_type, frequency):
         price_dict = response.json()
         for each in price_dict['candles']:
             each['datetime'] = datetime.fromtimestamp(int(each['datetime']) / 1000).strftime("%Y-%m-%d")
+        if not os.path.exists('history'):
+            os.mkdir('history')
         with open(Path('history', ticker + '.json'), 'w') as file:
             file.write(json.dumps(price_dict, indent=4, sort_keys=True))
         file.close()
