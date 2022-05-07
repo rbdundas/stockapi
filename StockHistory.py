@@ -118,14 +118,12 @@ def get_stochastic_oscillator(df, period=14):
                 n += 1
             df.at[i, 'best_low'] = low
             df.at[i, 'best_high'] = high
-            df.at[i, 'so'] = 100*((df.iloc[i]['close']-df.iloc[i]['best_low'])/(df.iloc[i]['best_high']-df.iloc[i]['best_low']))
-            if i >= period + 3:
-                n = 0
-                soavg = 0
-                while n < 3:
-                    soavg += df.iloc[i - n]['so']
-                    n += 1
-                df.at[i, 'soavg'] = soavg/3
+            df.at[i, 'fast_k'] = 100*((df.iloc[i]['close']-df.iloc[i]['best_low'])/(df.iloc[i]['best_high']-df.iloc[i]['best_low']))
+
+    df['fast_d'] = df['fast_k'].rolling(3).mean().round(2)
+    df['slow_k'] = df['fast_d']
+    df['slow_d'] = df['slow_k'].rolling(3).mean().round(2)
+
     return df
 
 
@@ -155,8 +153,9 @@ def chart_stochastic_oscillator(ticker, df):
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(5, 1))
 
-    plt.plot(df['Date'], df['soavg'], color='orange')
-    plt.plot(df['Date'], df['so'], color='grey')
+    plt.plot(df['Date'], df['fast_k'], color='orange', linewidth=.75)
+    plt.plot(df['Date'], df['fast_d'], color='grey', linewidth=.75)
+    plt.plot(df['Date'], df['slow_d'], color='green', linewidth=.75)
 
     ax.grid(True)
     ax.set_ylabel(r'Price [\$]')
@@ -181,13 +180,12 @@ def chart_stochastic_oscillator_and_price(ticker, df):
     ax[0].axes.get_xaxis().set_visible(False)  # Remove X labels
     ax[0].set_ylabel(r'Price [\$]')
     ax[0].plot(df['close'], color='black', linewidth=1)
-    # ax[0].plot(df['ma50'], color='red', linewidth=1)
-    # ax[0].plot(df['ma200'], color='blue', linewidth=1)
 
-    ax[1].plot(df['Date'], df['soavg'], color='orange', linewidth=1)
-    ax[1].plot(df['Date'], df['so'], color='grey', linewidth=1)
+    ax[1].plot(df['Date'], df['fast_k'], color='orange', linewidth=1)
+    ax[1].plot(df['Date'], df['fast_d'], color='grey', linewidth=1)
+    ax[1].plot(df['Date'], df['slow_d'], color='green', linewidth=1)
     ax[1].grid(True)
-    ax[1].set_ylabel(r'S.I.')
+    ax[1].set_ylabel(r'S.O.')
     ax[1].set_ylim(0, 100)
     ax[1].axhline(y=80, color='b', linestyle='-')
     ax[1].axhline(y=20, color='r', linestyle='-')
@@ -331,8 +329,8 @@ def main():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
     pd.set_option('display.width', 1000)
-    chart_stochastic_oscillator_and_price(ticker, df)
-
+    chart_stochastic_oscillator(ticker, df)
+    print(df)
 
 if __name__ == "__main__":
     main()
