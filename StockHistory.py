@@ -1,65 +1,47 @@
 import json
 import os
 from pathlib import Path
-from datetime import datetime
-
+from datetime import datetime, timedelta
+import psycopg2
 import pandas as pd
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 import requests
+from yahooquery import Ticker
+
 
 tda_url = 'https://api.tdameritrade.com/v1/marketdata/{ticker}/pricehistory'
 
 load_dotenv()
 
 
-def get_price_history(ticker, period_type, period, frequency_type, frequency, new_file):
-    url = tda_url.format(ticker=ticker)
+def get_database_connection():
+    conn = psycopg2.connect(
+        dbname=os.environ['dbname'],
+        user=os.environ['dbusername'],
+        password=os.environ['dbpassword']
+    )
+    return conn
 
-    params = {
-        'apikey': os.environ['API_KEY'],
-        'periodType': period_type,
-        'period': period,
-        'frequencyType': frequency_type,
-        'frequency': frequency
-    }
 
-    if new_file:
-        if os.path.exists(Path('history', ticker + '.json')):
-            os.remove(Path('history', ticker + '.json'))
-
-    if os.path.exists(Path('history', ticker + '.json')):
-        price_dict = json.load(open(Path('history', ticker + '.json'), 'r'))
-    else:
-        response = requests.get(url, params=params)
-        price_dict = response.json()
-        for each in price_dict['candles']:
-            each['datetime'] = datetime.fromtimestamp(int(each['datetime']) / 1000).strftime("%Y-%m-%d")
-        if not os.path.exists('history'):
-            os.mkdir('history')
-        with open(Path('history', ticker + '.json'), 'w') as file:
-            file.write(json.dumps(price_dict, indent=4, sort_keys=True))
-        file.close()
-
-    df = pd.DataFrame(price_dict['candles'])
-    df['Date'] = pd.to_datetime(df['datetime'])
-    df.set_index(df['Date'])
-
+def get_price_history(symbol):
+    ticker = Ticker(symbol)
+    df = ticker.history()
+    df = df.reset_index()
     return df
 
 
 def get_up_or_down(df):
     for i in range(len(df)):
-        if i > 0:
-            if df.iloc[i]['close'] >= df.iloc[i-1]['close']:
-                df.at[i, 'gain'] = df.iloc[i]['close'] - df.iloc[i-1]['close']
-                df.at[i, 'loss'] = 0
-            elif df.iloc[i]['close'] < df.iloc[i-1]['close']:
-                df.at[i, 'loss'] = df.iloc[i-1]['close'] - df.iloc[i]['close']
-                df.at[i, 'gain'] = 0
-            else:
-                df.at[i, 'gain'] = 0
-                df.at[i, 'loss'] = 0
+        if df.iloc[i]['close'] >= df.iloc[i-1]['close']:
+            df.at[i, 'gain'] = df.iloc[i]['close'] - df.iloc[i-1]['close']
+            df.at[i, 'loss'] = 0
+        elif df.iloc[i]['close'] < df.iloc[i-1]['close']:
+            df.at[i, 'loss'] = df.iloc[i-1]['close'] - df.iloc[i]['close']
+            df.at[i, 'gain'] = 0
+        else:
+            df.at[i, 'gain'] = 0
+            df.at[i, 'loss'] = 0
     return df
 
 
@@ -127,10 +109,19 @@ def get_stochastic_oscillator(df, period=14):
     return df
 
 
-def chart_price_history(ticker, df):
-
+def get_moving_averages(symbol):
+    ticker = Ticker(symbol)
+    end_date = datetime.today() - timedelta(days=700)
+    df = ticker.history(
+        period='year', interval='1d', start=end_date, end=datetime.today())
+    df = df.reset_index()
     df['ma50'] = df['close'].rolling(50).mean()
     df['ma200'] = df['close'].rolling(200).mean()
+    return df
+
+
+def chart_price_history(symbol):
+    df = get_moving_averages(symbol)
 
     plt.figure(figsize=[16, 8])
     plt.style.use('default')
@@ -142,7 +133,7 @@ def chart_price_history(ticker, df):
 
     ax.grid(True)
     ax.set_ylabel(r'Price [\$]')
-    ax.set_title(ticker, loc='left', y=0.85, x=0.02, fontsize='medium')
+    ax.set_title(symbol, loc='left', y=0.85, x=0.02, fontsize='medium')
     for label in ax.get_xticklabels(which='major'):
         label.set(rotation=30, horizontalalignment='right')
     plt.show()
@@ -153,9 +144,9 @@ def chart_stochastic_oscillator(ticker, df):
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(5, 1))
 
-    plt.plot(df['Date'], df['fast_k'], color='orange', linewidth=.75)
-    plt.plot(df['Date'], df['fast_d'], color='grey', linewidth=.75)
-    plt.plot(df['Date'], df['slow_d'], color='green', linewidth=.75)
+    plt.plot(df['date'], df['fast_k'], color='orange', linewidth=.75)
+    plt.plot(df['date'], df['fast_d'], color='grey', linewidth=.75)
+    plt.plot(df['date'], df['slow_d'], color='green', linewidth=.75)
 
     ax.grid(True)
     ax.set_ylabel(r'Price [\$]')
@@ -305,7 +296,7 @@ def chart_rsi_with_candles(ticker, df):
     ax[0].bar(down.index, down.high - down.open, width2, bottom=down.open, color=col2)
     ax[0].bar(down.index, down.low - down.close, width2, bottom=down.close, color=col2)
 
-    ax[1].plot(df['Date'], df['rsi'])
+    ax[1].plot(df['date'], df['rsi'])
     ax[1].set_ylim(0, 100)
     ax[1].axhline(y=70, color='r', linestyle='-')
     ax[1].axhline(y=30, color='r', linestyle='-')
@@ -317,20 +308,13 @@ def chart_rsi_with_candles(ticker, df):
 
 
 def main():
-    ticker = 'GOOG'
-    new_file = False
-    # df = get_relative_strength_index(
-    #     ticker, get_price_history(ticker, 'year', 1, 'daily', 1, new_file)
-    # )
-
-    # chart_volume_and_averages(ticker, get_price_history(ticker, 'year', 1, 'daily', 1, new_file))
-    df = get_price_history(ticker, 'year', 1, 'daily', 1, new_file)
-    df = get_stochastic_oscillator(df)
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
     pd.set_option('display.width', 1000)
-    chart_stochastic_oscillator(ticker, df)
-    print(df)
+
+    symbol = 'SHOP'
+    chart_price_history(symbol)
+
 
 if __name__ == "__main__":
     main()
